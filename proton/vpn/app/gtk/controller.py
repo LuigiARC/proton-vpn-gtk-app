@@ -205,6 +205,8 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         if connect_to == "FASTEST":
             return self.connect_to_fastest_server()
 
+        if connect_to == "RANDOM":
+            return self.connect_to_random_server()
         return self._connect_to(connect_to)
 
     def connect_from_tray(self, connect_to: str) -> Future:
@@ -225,6 +227,24 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         "connected" state.
         """
         server = self._api.server_list.get_fastest_in_country(country_code)
+        return self._connect_to_vpn(server)
+
+    def connect_to_random_server(self) -> Future:  
+        """
+        Establishes a VPN connection to a random server.
+        Uses locally cached server list since I don't have access to the api.
+        :return: A Future object that resolves once the connection reaches the
+        "connected" state.
+        """
+        import random
+        
+        # Get all available servers from the cached list
+        all_servers = list(self._api.server_list)
+        if not all_servers:
+            raise RuntimeError("No servers available in cached server list")
+        
+        # Pick a random server
+        server = random.choice(all_servers)
         return self._connect_to_vpn(server)
 
     def connect_to_fastest_server(self) -> Future:
