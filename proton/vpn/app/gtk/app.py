@@ -123,7 +123,7 @@ class App(Gtk.Application):
                 # If the app is already running, connect immediately
                 if self.window:
                     logger.info(f"Connecting to {server} via command line (app already running)")
-                    self._controller._connect_to(server)
+                    self._controller.autoconnect(server)
                 else:
                     # Set the override for startup
                     self._controller.set_connect_at_app_startup_override(server)
