@@ -237,14 +237,12 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         "connected" state.
         """
         import random
-        
-        # Get all available servers from the cached list
         all_servers = list(self._api.server_list)
-        if not all_servers:
-            raise RuntimeError("No servers available in cached server list")
-        
-        # Pick a random server
-        server = random.choice(all_servers)
+        available_servers = [server for server in all_servers if server.enabled]
+        server = random.choice(available_servers)
+        while server.tier == 0:
+            #this is a free server and we should try again
+            server = random.choice(available_servers)
         return self._connect_to_vpn(server)
 
     def connect_to_fastest_server(self) -> Future:
