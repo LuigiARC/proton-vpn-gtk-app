@@ -21,7 +21,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from typing import Callable, Optional
 
-from gi.repository import GObject, Gtk, Gdk, GLib
+from gi.repository import GObject, Gtk, Gdk, GLib, Gio
 
 from proton.vpn import logging
 
@@ -53,7 +53,10 @@ class App(Gtk.Application):
             self,
             controller: Controller
     ):
-        super().__init__(application_id=APPLICATION_ID)
+        super().__init__(
+            application_id=APPLICATION_ID,
+            flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE # 
+        )
         logger.info(f"{self=}", category="APP", event="PROCESS_START")
         self._controller = controller
         self.window = None
@@ -104,6 +107,30 @@ class App(Gtk.Application):
         self.window.present()
         self.emit("app-ready")
 
+    def do_command_line(self, command_line):  # pylint: disable=arguments-differ
+        """
+        Called by the Gio application framework.
+        Handles calling controller methods on another (primary) instance when the app is launched with arguments.
+        """
+        # Get the command line options using the GLib API
+        options = command_line.get_options_dict()
+        
+        # Check if the user wants to connect or change connection to a new server
+        if options.contains("connect"):
+            value = options.lookup_value("connect", GLib.VariantType("s"))
+            if value:
+                server = value.get_string().upper()
+                # If the app is already running, connect immediately
+                if self.window:
+                    logger.info(f"Connecting to {server} via command line (app already running)")
+                    self._controller._connect_to(server)
+                else:
+                    # Set the override for startup
+                    self._controller.set_connect_at_app_startup_override(server)
+        
+        self.activate()
+        return 0
+
     def do_handle_local_options(self, options: GLib.VariantDict):  # noqa: E501 pylint: disable=arguments-differ
         """
         Handles the options defined in add_options
@@ -124,8 +151,6 @@ class App(Gtk.Application):
             if value is None:
                 print("Error: Missing argument for --connect/-c")
                 return 1
-            self._controller.set_connect_at_app_startup_override(value.get_string().upper())
-
         return -1
 
     @property
