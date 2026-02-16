@@ -30,8 +30,8 @@ from proton.vpn.app.gtk.widgets.headerbar.menu.settings.split_tunneling.app.app_
     import AppSelectionWindow
 from proton.vpn.app.gtk.widgets.headerbar.menu.settings.split_tunneling.app.data_structures \
     import AppData
-from proton.vpn.app.gtk.widgets.headerbar.menu.settings.split_tunneling.app.util \
-    import _get_all_installed_apps
+from proton.vpn.app.gtk.widgets.headerbar.menu.settings.split_tunneling.app.installed_apps \
+    import get_all_installed_apps
 
 
 LABEL_CONVERSION = {
@@ -65,7 +65,7 @@ class AppBasedSplitTunnelingSettings(Gtk.Box):  # pylint: disable=too-many-insta
         self._stored_apps = stored_apps if stored_apps is not None else \
             self._get_settings()
         self._installed_apps = installed_apps if installed_apps is not None else \
-            _get_all_installed_apps()
+            get_all_installed_apps()
         self._selected_app_list = selected_app_list if selected_app_list is not None else\
             SelectedAppList(self._get_selected_app_list())
 
@@ -77,12 +77,12 @@ class AppBasedSplitTunnelingSettings(Gtk.Box):  # pylint: disable=too-many-insta
 
         mode_and_app_count_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         mode_and_app_count_box.set_halign(Gtk.Align.START)
-        mode_and_app_count_box.add(self._mode_label)
-        mode_and_app_count_box.add(self._app_count_label)
+        mode_and_app_count_box.append(self._mode_label)
+        mode_and_app_count_box.append(self._app_count_label)
 
-        self.add(mode_and_app_count_box)
-        self.add(self._selected_app_list)
-        self.add(self._add_button)
+        self.append(mode_and_app_count_box)
+        self.append(self._selected_app_list)
+        self.append(self._add_button)
 
         self._update_mode_label()
         self._update_app_count_label()
@@ -94,7 +94,7 @@ class AppBasedSplitTunnelingSettings(Gtk.Box):  # pylint: disable=too-many-insta
     def _create_add_button(self) -> Gtk.Button:
         button = self.gtk.Button.new_with_label("Add")
         button.set_name("split-tunneling-app-add-button")
-        button.get_style_context().add_class("secondary")
+        button.add_css_class("secondary")
         button.connect("clicked", self._on_clicked_add)
         button.set_hexpand(True)
         button.set_halign(Gtk.Align.START)

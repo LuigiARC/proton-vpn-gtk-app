@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
-import os
 import subprocess  # nosec B404 # nosemgrep: gitlab.bandit.B404
 from concurrent.futures import Future
 from importlib import metadata
@@ -48,7 +47,7 @@ from proton.vpn.app.gtk.services.reconnector.network_monitor import NetworkMonit
 from proton.vpn.app.gtk.services.reconnector.session_monitor import SessionMonitor
 from proton.vpn.app.gtk.services.reconnector.vpn_monitor import VPNMonitor
 from proton.vpn.app.gtk.settings_watchers import SettingsWatchers
-from proton.vpn.app.gtk.utils import semver, glib
+from proton.vpn.app.gtk.utils import glib
 from proton.vpn.app.gtk.utils.exception_handler import ExceptionHandler
 from proton.vpn.app.gtk.utils.executor import AsyncExecutor
 from proton.vpn.app.gtk.widgets.headerbar.menu.bug_report_dialog import BugReportForm
@@ -60,7 +59,6 @@ from proton.session.api import Fido2Assertion
 logger = logging.getLogger(__name__)
 
 DOT = "."  # pylint: disable=invalid-name
-TWO_FACTOR_AUTH_SECURITY_KEY_ENV_VARIABLE_NAME = "PROTON_VPN_U2F"
 
 
 class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-attributes
@@ -89,9 +87,7 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         self.exception_handler = exception_handler
         self.exception_handler.controller = self
 
-        client_type_metadata = ClientTypeMetadata(
-            type="gui", version=semver.from_pep440(self.app_version)
-        )
+        client_type_metadata = ClientTypeMetadata(type="gui")
 
         self._api = api or ProtonVPNAPI(client_type_metadata)
         self._connector = vpn_connector
@@ -640,12 +636,4 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         """
         Returns if FIDO2 is available.
         """
-        return self._api.is_fido2_lib_available
-
-    @property
-    def security_key_env_variable_set(self) -> bool:
-        """Returns if the environment variable is set for security key 2FA."""
-        env_variable_value = os.environ.get(
-            TWO_FACTOR_AUTH_SECURITY_KEY_ENV_VARIABLE_NAME, "").lower()
-
-        return env_variable_value in ["1", "true", "yes", "y"]
+        return self._api.supports_fido2

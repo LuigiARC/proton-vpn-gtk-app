@@ -1,3 +1,46 @@
+version: 4.14.1
+time: 2026/01/21 14:16
+author: Elena Svilpe
+email: elena.svilpe@proton.ch
+urgency: low
+stability: unstable
+description:
+- "fix: log failed sign in attempt (Pep Llaneras)"
+---
+version: 4.14.0
+time: 2026/01/13 13:58
+author: Elena Svilpe
+email: elena.svilpe@proton.ch
+urgency: low
+stability: unstable
+description:
+- "fix: fix memory leak (Alexandru Cheltuitor)"
+- "chore: Migrate to GTK4 (Alexandru Cheltuitor)"
+---
+version: 4.13.1
+time: 2025/11/07 10:36
+author: Pep Llaneras
+email: josep.llaneras@proton.ch
+urgency: low
+stability: unstable
+description:
+- "fix: Handle desktop file parsing errors"
+---
+version: 4.13.0
+time: 2025/11/03 08:00
+author: Josep Llaneras
+email: Josep Llaneras
+urgency: low
+stability: unstable
+description:
+- "fix: remove environment variable that limits security key authentication (Alexandru Cheltuitor)"
+- "fix: Hide security key form when no keys are registered (Luke Titley)"
+- "chore: Switch to new versioning strategy (Pep Llaneras)"
+- "chore: Remove outdated tests (Pep Llaneras)"
+- "fix: Show security key as default 2FA option if available (Pep Llaneras)"
+- "fix: Fix login stack GTK warnings (Pep Llaneras)"
+- "fix: Clear keyring on cancelled 2FA (Pep Llaneras)"
+---
 version: 4.12.0
 time: 2025/10/13 11:30
 author: Richard Paterson

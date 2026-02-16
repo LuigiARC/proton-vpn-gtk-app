@@ -75,7 +75,7 @@ class LoginStack(Gtk.Stack):
             lambda _, two_factor_auth_required:
                 self._on_user_authenticated(two_factor_auth_required)
         )
-        self.display_form(self.two_factor_auth_widget)
+        self.display_form(self.login_form)
 
         self.two_factor_auth_widget.connect(
             "two-factor-auth-successful",
@@ -112,9 +112,9 @@ class LoginStack(Gtk.Stack):
         form (user/password) or the 2FA form.
         :param widget: The widget to be displayed to the user.
         """
+        widget.reset()
         self.active_widget = widget
         self.set_visible_child(widget)
-        widget.reset()
 
     def reset(self):
         """Resets the widget to its initial state."""

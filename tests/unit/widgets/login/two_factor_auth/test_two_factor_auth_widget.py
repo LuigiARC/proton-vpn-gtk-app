@@ -24,34 +24,9 @@ from proton.vpn.app.gtk.widgets.login.two_factor_auth.two_factor_auth_widget imp
 from tests.unit.testing_utils import process_gtk_events
 
 
-@pytest.mark.parametrize(
-    "fido2_available,security_key_env_variable_set",
-    [
-        (True, True),
-        (True, False),
-        (False, True),
-        (False, False),
-    ]
-)
-def test_two_factor_auth_widget_displays_security_key_form_when_fido2_is_available_and_security_key_env_variable_is_set(
-    fido2_available, security_key_env_variable_set
-):
-    controller_mock = Mock()
-    controller_mock.fido2_available = fido2_available
-    controller_mock.security_key_env_variable_set = security_key_env_variable_set
-
-    two_factor_auth_widget = TwoFactorAuthWidget(controller_mock, Mock(), Mock())
-
-    if fido2_available and security_key_env_variable_set:
-        assert two_factor_auth_widget.stack_switch.get_stack()
-    else:
-        assert not two_factor_auth_widget.stack_switch.get_stack()
-
-
 def test_two_factor_auth_widget_forwards_two_factor_auth_successful_signal_when_received_from_two_factor_auth_stack():
     controller_mock = Mock()
     controller_mock.fido2_available = True
-    controller_mock.security_key_env_variable_set = True
     two_factor_auth_successful_callback = Mock()
 
     two_factor_auth_widget = TwoFactorAuthWidget(controller_mock, Mock(), Mock())

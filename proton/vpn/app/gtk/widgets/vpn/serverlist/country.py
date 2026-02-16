@@ -25,9 +25,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from typing import List, Tuple, Set
-from gi.repository import Atk, GLib, GObject
+from gi.repository import GLib, GObject
 
-from proton.vpn.app.gtk.utils import accessibility
+from proton.vpn.app.gtk.utils.accessibility import add_accessibility
 from proton.vpn.app.gtk.utils.search import normalize
 from proton.vpn.connection.enum import ConnectionStateEnum
 from proton.vpn.session.servers import Country
@@ -124,11 +124,15 @@ class CountryHeader(Gtk.Box):  # pylint: disable=too-many-instance-attributes
 
         self._country_name_label = None
         self._under_maintenance_icon = None
-        self._connect_button = None
         self._country_details = None
 
-        self._collapsed_img = Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON)
-        self._expanded_img = Gtk.Image.new_from_icon_name("pan-up-symbolic", Gtk.IconSize.BUTTON)
+        self._connect_button = None
+        self._connect_button_handler_id = None
+        self._toggle_button = None
+        self._toggle_button_handler_id = None
+
+        self._collapsed_img = Gtk.Image.new_from_icon_name("pan-down-symbolic")
+        self._expanded_img = Gtk.Image.new_from_icon_name("pan-up-symbolic")
 
         self._build_ui(connection_state)
 
@@ -139,15 +143,19 @@ class CountryHeader(Gtk.Box):  # pylint: disable=too-many-instance-attributes
 
     def _build_ui(self, connection_state: ConnectionStateEnum):
         self._country_name_label = Gtk.Label(label=self.country_name)
-        self.pack_start(self._country_name_label, expand=False, fill=False, padding=0)
+        self._country_name_label.set_halign(Gtk.Align.START)
+        self.prepend(self._country_name_label)
         self.set_spacing(10)
 
-        self._toggle_button = Gtk.Button()
-        self._toggle_button.get_style_context().add_class("secondary")
-        self._toggle_button.connect("clicked", self._on_toggle_button_clicked)
-        self.pack_end(self._toggle_button, expand=False, fill=False, padding=0)
-
         self._show_under_maintenance_icon_or_country_details()
+
+        self._toggle_button = Gtk.Button()
+        self._toggle_button.add_css_class("secondary")
+        self._toggle_button_handler_id = self._toggle_button.connect(
+            "clicked", self._on_toggle_button_clicked
+        )
+        self._country_name_label.set_halign(Gtk.Align.END)
+        self.append(self._toggle_button)
 
         self.connection_state = connection_state
 
@@ -164,37 +172,41 @@ class CountryHeader(Gtk.Box):  # pylint: disable=too-many-instance-attributes
 
     def _show_under_maintenance_icon(self):
         if self._country_details:
-            self._country_details.hide()
+            self._country_details.set_visible(False)
 
         if not self._under_maintenance_icon:
             self._under_maintenance_icon = UnderMaintenanceIcon(self.country_name)
-            self.pack_end(self._under_maintenance_icon, expand=False, fill=False, padding=0)
+            self._under_maintenance_icon.set_halign(Gtk.Align.END)
+            self.append(self._under_maintenance_icon)
 
         self._country_name_label.set_property("sensitive", False)
 
     def _show_country_details(self):
         if self._under_maintenance_icon:
-            self._under_maintenance_icon.hide()
+            self._under_maintenance_icon.set_visible(False)
 
         if not self._country_details:
             self._country_details = self._build_country_details()
-            self.pack_end(self._country_details, expand=False, fill=False, padding=0)
+            self.append(self._country_details)
 
-        self._country_details.show()
+        self._country_details.set_visible(True)
         self._country_name_label.set_property("sensitive", True)
 
     def _build_country_details(self):
         country_details = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        country_details.set_halign(Gtk.Align.END)
+        country_details.set_hexpand(True)
+        country_details.set_spacing(10)
 
         if self._upgrade_required:
             button = self._build_upgrade_required_link_button()
-            country_details.pack_end(button, expand=False, fill=False, padding=0)
+            country_details.append(button)
         else:
             button = self._build_connect_button()
             self._connect_button = button
-            country_details.pack_end(self._connect_button, expand=False, fill=False, padding=0)
+            country_details.append(self._connect_button)
 
-        button_relationships = [(self._country_name_label, Atk.RelationType.LABELLED_BY)]
+        add_accessibility(button, Gtk.AccessibleRelation.LABELLED_BY, self._country_name_label)
 
         country_row_icons = []
         if self._smart_routing:
@@ -203,10 +215,10 @@ class CountryHeader(Gtk.Box):  # pylint: disable=too-many-instance-attributes
         server_feature_icons = self._build_server_feature_icons()
         country_row_icons.extend(server_feature_icons)
         for icon in country_row_icons:
-            button_relationships.append((icon, Atk.RelationType.DESCRIBED_BY))
-            country_details.pack_end(icon, expand=False, fill=False, padding=5)
+            country_details.prepend(icon)
 
-        accessibility.add_widget_relationships(button, button_relationships)
+        if country_row_icons:
+            add_accessibility(button, Gtk.AccessibleRelation.DESCRIBED_BY, country_row_icons)
 
         return country_details
 
@@ -227,8 +239,10 @@ class CountryHeader(Gtk.Box):  # pylint: disable=too-many-instance-attributes
 
     def _build_connect_button(self) -> Gtk.Button:
         connect_button = Gtk.Button()
-        connect_button.connect("clicked", self._on_connect_button_clicked)
-        connect_button.get_style_context().add_class("secondary")
+        self._connect_button_handler_id = connect_button.connect(
+            "clicked", self._on_connect_button_clicked
+        )
+        connect_button.add_css_class("secondary")
         return connect_button
 
     def _build_server_feature_icons(self) -> List[Gtk.Image]:
@@ -268,7 +282,7 @@ class CountryHeader(Gtk.Box):  # pylint: disable=too-many-instance-attributes
     def show_country_servers(self, show_country_servers: bool):
         """Sets whether the country servers should be shown or not."""
         self._show_country_servers = show_country_servers
-        self._toggle_button.set_image(
+        self._toggle_button.set_child(
             self._expanded_img if self.show_country_servers else self._collapsed_img
         )
         self._toggle_button.set_tooltip_text(
@@ -332,12 +346,31 @@ class CountryHeader(Gtk.Box):  # pylint: disable=too-many-instance-attributes
     def click_toggle_country_servers_button(self):
         """Clicks the button to toggle the country servers.
         This method was made available for tests."""
-        self._toggle_button.clicked()
+        self._toggle_button.emit("clicked")
 
     def click_connect_button(self):
         """Clicks the button to connect to the country.
         This method was made available for tests."""
-        self._connect_button.clicked()
+        self._connect_button.emit("clicked")
+
+    def grab_focus(self):  # pylint: disable=arguments-differ
+        """Focuses on the connect button if available, otherwise on the toggle button."""
+        if self._connect_button and not self._under_maintenance:
+            self._connect_button.grab_focus()
+        elif self._toggle_button:
+            self._toggle_button.grab_focus()
+
+    def cleanup(self):
+        """Clean up signal connections to allow garbage collection."""
+        if self._toggle_button_handler_id:
+            self._toggle_button.disconnect(self._toggle_button_handler_id)
+            self._toggle_button_handler_id = None
+            self._toggle_button = None
+
+        if self._connect_button_handler_id:
+            self._connect_button.disconnect(self._connect_button_handler_id)
+            self._connect_button_handler_id = None
+            self._connect_button = None
 
 
 class DeferredCountryRow(Gtk.Box):  # pylint: disable=too-many-instance-attributes
@@ -369,7 +402,9 @@ class DeferredCountryRow(Gtk.Box):  # pylint: disable=too-many-instance-attribut
 
         self._server_rows_revealer = Gtk.Revealer()
         server_rows_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self._server_rows_revealer.add(server_rows_container)
+        server_rows_container.set_spacing(10)
+        self._server_rows_revealer.set_margin_top(15)
+        self._server_rows_revealer.set_child(server_rows_container)
 
         ordered_servers = []
         if is_free_user:
@@ -393,10 +428,7 @@ class DeferredCountryRow(Gtk.Box):  # pylint: disable=too-many-instance-attribut
                     user_tier=user_tier,
                     controller=self._controller
                 )
-                server_rows_container.pack_start(
-                    server_row,
-                    expand=False, fill=False, padding=5
-                )
+                server_rows_container.append(server_row)
 
                 self._indexed_server_rows[server.id] = server_row
 
@@ -423,12 +455,12 @@ class DeferredCountryRow(Gtk.Box):  # pylint: disable=too-many-instance-attribut
             controller=controller,
             show_country_servers=show_country_servers
         )
-        self._country_header.connect(
+        self._toggle_signal_handler_id = self._country_header.connect(
             "toggle-country-servers", self._on_toggle_country_servers
         )
 
-        self.pack_start(self._country_header, expand=False, fill=False, padding=5)
-        self.pack_start(self._server_rows_revealer, expand=False, fill=False, padding=5)
+        self.append(self._country_header)
+        self.append(self._server_rows_revealer)
 
         if show_country_servers:
             self._server_rows_revealer.set_reveal_child(True)
@@ -438,7 +470,6 @@ class DeferredCountryRow(Gtk.Box):  # pylint: disable=too-many-instance-attribut
             if self._add_servers_to_country:
                 self._add_servers_to_country()
                 self._add_servers_to_country = None
-                self._server_rows_revealer.show_all()
 
     def toggle_row(self):
         """Toggles the view of the children of the country row."""
@@ -481,11 +512,22 @@ class DeferredCountryRow(Gtk.Box):  # pylint: disable=too-many-instance-attribut
         """
         self._country_header.click_toggle_country_servers_button()
 
+    def grab_focus(self):  # pylint: disable=arguments-differ
+        """Focuses on the country row."""
+        self._country_header.grab_focus()
+
     @property
     def server_rows(self) -> List[ServerRow]:
         """Returns the list of server rows for this server.
         This method was made available for tests."""
-        return self._server_rows_revealer.get_child().get_children()
+        server_rows = []
+        revealer_child = self._server_rows_revealer.get_child()
+        if revealer_child:
+            child = revealer_child.get_first_child()
+            while child:
+                server_rows.append(child)
+                child = child.get_next_sibling()
+        return server_rows
 
     @property
     def connection_state(self):
@@ -554,3 +596,31 @@ class DeferredCountryRow(Gtk.Box):  # pylint: disable=too-many-instance-attribut
             self._country_header.update_under_maintenance_status(
                 self._under_maintenance
             )
+
+    def cleanup(self):
+        """Clean up signal connections and references to allow garbage collection."""
+        # Disconnect country header signal
+        self._country_header.disconnect(self._toggle_signal_handler_id)
+
+        # Clean up country header's signal connections
+        self._country_header.cleanup()
+        self._country_header = None
+
+        # Clean up all server rows and their signal connections
+        for server_row in self._indexed_server_rows.values():
+            server_row.cleanup()
+        self._indexed_server_rows.clear()
+        self._indexed_server_rows = {}
+
+        # Clear the deferred server creation function and its captured variables
+        self._add_servers_to_country = None
+
+        # Clear other references
+        # Remove child to break widget tree references
+        child = self._server_rows_revealer.get_child()
+        if child:
+            self._server_rows_revealer.set_child(None)
+        self._server_rows_revealer = None
+
+        # Clear controller reference
+        self._controller = None

@@ -36,20 +36,14 @@ SECURITY_KEY_FORM_AUTHENTICATION_VALUE = "SomeTestValue"
 class TestSecurityKeyForm:
 
     @pytest.mark.parametrize(
-        "fido2_available,security_key_env_variable_set",
-        [
-            (True, True),
-            (True, False),
-            (False, True),
-            (False, False),
-        ]
+        "fido2_available",
+        [True, False]
     )
-    def test_two_factor_auth_stack_security_key_form_visibility_when_fido2_and_security_key_env_variable_are_configured(
-        self, fido2_available, security_key_env_variable_set
+    def test_two_factor_auth_stack_reset_shows_security_key_form_by_default_when_fido2_is_available(
+        self, fido2_available
     ):
         controller_mock = Mock(spec=Controller)
         controller_mock.fido2_available = fido2_available
-        controller_mock.security_key_env_variable_set = security_key_env_variable_set
 
         security_key_form = SecurityKeyForm(controller_mock, notifications=Mock(), overlay_widget=Mock())
         two_factor_auth_stack = TwoFactorAuthStack(
@@ -58,16 +52,18 @@ class TestSecurityKeyForm:
             overlay_widget=Mock(spec=OverlayWidget),
             security_key_form=security_key_form
         )
-        if fido2_available and security_key_env_variable_set:
-            assert two_factor_auth_stack.security_key_form
+
+        two_factor_auth_stack.reset()
+
+        if fido2_available:
+            assert two_factor_auth_stack.active_widget == two_factor_auth_stack.security_key_form
         else:
-            assert not two_factor_auth_stack.security_key_form
+            assert two_factor_auth_stack.active_widget == two_factor_auth_stack.authenticator_app_form
 
 
 def test_two_factor_auth_stack_forwards_auth_successful_signal_when_received_from_auth_app_form():
     controller_mock = Mock(spec=Controller)
     controller_mock.fido2_available = False
-    controller_mock.security_key_env_variable_set = False
 
     two_factor_auth_stack = TwoFactorAuthStack(
         controller=controller_mock,
@@ -88,7 +84,6 @@ def test_two_factor_auth_stack_forwards_auth_successful_signal_when_received_fro
 def test_two_factor_auth_stack_forwards_auth_successful_signal_when_received_from_security_key_app_form():
     controller_mock = Mock(spec=Controller)
     controller_mock.fido2_available = True
-    controller_mock.security_key_env_variable_set = True
 
     two_factor_auth_stack = TwoFactorAuthStack(
         controller=controller_mock,
@@ -105,3 +100,30 @@ def test_two_factor_auth_stack_forwards_auth_successful_signal_when_received_fro
 
     two_factor_auth_successful_callback.assert_called_once_with(two_factor_auth_stack)
 
+
+def test_two_factor_auth_stack_logs_user_out_when_security_key_2fa_is_cancelled():
+    controller = Mock(spec=Controller)
+    two_factor_auth_stack = TwoFactorAuthStack(
+        controller=controller,
+        notifications=Mock(spec=Notifications),
+        overlay_widget=Mock(spec=OverlayWidget)
+    )
+    two_factor_auth_stack.security_key_form.emit("two-factor-auth-cancelled")
+
+    process_gtk_events()
+
+    controller.logout.assert_called_once()
+
+
+def test_two_factor_auth_stack_logs_user_out_when_authenticator_app_2fa_is_cancelled():
+    controller = Mock(spec=Controller)
+    two_factor_auth_stack = TwoFactorAuthStack(
+        controller=controller,
+        notifications=Mock(spec=Notifications),
+        overlay_widget=Mock(spec=OverlayWidget)
+    )
+    two_factor_auth_stack.authenticator_app_form.emit("two-factor-auth-cancelled")
+
+    process_gtk_events()
+
+    controller.logout.assert_called_once()
