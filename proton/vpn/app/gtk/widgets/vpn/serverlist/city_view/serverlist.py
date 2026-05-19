@@ -20,9 +20,8 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
-import itertools
 import time
-from typing import List
+from typing import List, Optional, cast
 import logging
 from unittest.mock import Mock
 
@@ -34,26 +33,52 @@ from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.session.servers import ServerList, TierEnum
 from proton.vpn.session.servers.server_list_fetcher import ServerListFetcher
 
-from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.country import CountryRow
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.country_row import CountryRow
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.server_list_header_row import (
+    ServerListHeaderRow,
+)
+from proton.vpn.app.gtk.widgets.vpn.search_entry import SearchEntry
+
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.utils import (
+    get_children,
+    sync_rows_with_model_items,
+)
 
 logger = proton_logging.getLogger(__name__)
 
 
 class ServerListWidget(Gtk.ScrolledWindow):
-    """Server list widget displaying countries, cities and their servers."""
+    """Server list widget displaying countries, locations and their servers."""
 
-    def __init__(self, controller: Controller):
+    def __init__(self, controller: Controller, search_entry: SearchEntry | None = None):
         super().__init__()
         self._controller = controller
-        self._user_tier = None
+        self._user_tier: Optional[int] = None
+        self._search_entry = search_entry
+
+        self.set_policy(
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            vscrollbar_policy=Gtk.PolicyType.AUTOMATIC
+        )
+        self.set_propagate_natural_width(True)
+        self.set_name("server-list-widget")
+        self.set_overlay_scrolling(False)
 
         # pylint: disable=duplicate-code
         self._container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self._container.set_name("server-list-widget-container")
         self._container.set_vexpand(True)
-        self._container.set_margin_end(10)  # Leave space for the scroll bar.
         self._container.set_spacing(5)
         self.set_child(self._container)
+
+        self._header_row = ServerListHeaderRow()
+        self._container.prepend(self._header_row)
+
+        self._country_rows_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self._country_rows_container.set_name("country-rows-container")
+        self._country_rows_container.set_vexpand(True)
+        self._country_rows_container.set_spacing(5)
+        self._container.append(self._country_rows_container)
 
     def display(self, user_tier: int, server_list: ServerList):
         """Builds and displays the server list."""
@@ -63,36 +88,27 @@ class ServerListWidget(Gtk.ScrolledWindow):
         self._controller.set_server_loads_updated_callback(self._on_server_loads_update)
         self.emit("ui-updated")
 
-    def connection_status_update(self, connection_status):
-        """
-        This method is called by VPNWidget whenever the VPN connection status changes.
-        Important: as this method is always called from another thread, we need
-        to make sure that any resulting actions are passed to the main thread
-        running GLib's main loop with GLib.idle_add.
-        """
-        # Not implemented
-
     def focus_on_entry(self, _widget, name_to_search: str) -> None:
         """Searches for an entry by name and either connects to it directly,
            or focuses on it."""
         # pylint: disable=duplicate-code
+        # Server
+        if "#" in name_to_search:
+            future = self._controller.connect_to_server(name_to_search)
+            future.add_done_callback(lambda f: GLib.idle_add(f.result))
+            if self._search_entry:
+                self._search_entry.grab_focus()
+            return
         for country in self.country_rows:
-
-            # Server
-            if "#" in name_to_search:
-                future = self._controller.connect_to_server(name_to_search)
-                future.add_done_callback(lambda f: GLib.idle_add(f.result))
-                return
-
             # Country
             if country.country_name.lower() == name_to_search.lower():
                 country.grab_focus()
                 return
 
-            # City
-            for city in country.cities:
-                if city.name.lower() == name_to_search.lower():
-                    country.focus_on_city(city.name)
+            # Location
+            for location in country.locations:
+                if location.name.lower() == name_to_search.lower():
+                    country.focus_on_location(location.name)
                     return
 
     @GObject.Signal(name="ui-updated")
@@ -106,36 +122,53 @@ class ServerListWidget(Gtk.ScrolledWindow):
     @property
     def country_rows(self) -> List[CountryRow]:
         """Returns the list of country rows currently displayed."""
-        country_rows = []
-        country_row = self._container.get_first_child()
-        while country_row:
-            country_rows.append(country_row)
-            country_row = country_row.get_next_sibling()
-        return country_rows
+        return cast(List[CountryRow], get_children(self._country_rows_container))
 
     def _remove_country_rows(self):
         for row in self.country_rows:
             row.reset()
-            self._container.remove(row)
+            self._country_rows_container.remove(row)
 
     def _display_country_rows(self, server_list: ServerList):
-        countries = server_list.group_by_country(cities=True)
-        if self._user_tier == TierEnum.FREE:
+        free_user = self._user_tier == TierEnum.FREE
+        countries = server_list.group_by_country(
+            group_by_location=True,
+            include_free_servers=free_user
+        )
+        if free_user:
             # If the current user has a free account, sort the countries having
             # free servers first.
             countries.sort(key=lambda country: (0 if country.free else 1, country.name))
 
-        for country, row in itertools.zip_longest(countries, self.country_rows):
-            if row is None:
-                # More countries than rows
-                row = CountryRow()
-                self._container.append(row)
+        # Collect expanded states before refresh (keyed by country code and child group name)
+        expanded_countries = {row.country_code.lower(): row.expanded for row in self.country_rows}
+        expanded_groups_per_country = {
+            country_row.country_code.lower(): set(
+                location_row.label.lower() for location_row in (
+                    country_row.location_rows
+                    + ([country_row.secure_core_row] if country_row.secure_core_row else [])
+                )
+                if location_row.expanded
+            )
+            for country_row in self.country_rows
+        }
 
-            if country is None:
-                # More rows than countries
-                self._container.remove(row)
-            else:
-                row.display(self._controller, country, self._user_tier)
+        def display_country_row(row, country):
+            expanded = expanded_countries.get(country.code.lower(), False)
+            expanded_groups = expanded_groups_per_country.get(country.code.lower())
+            row.display(
+                self._controller, country, self._user_tier,
+                expanded=expanded, expanded_groups=expanded_groups
+            )
+
+        sync_rows_with_model_items(
+            countries,
+            self.country_rows,
+            self._country_rows_container,
+            CountryRow,
+            display_country_row
+        )
+        self._header_row.set_count(len(countries))
 
     def _on_server_list_update(self):
         """Whenever a new server list is received the UI should be updated."""
@@ -170,7 +203,7 @@ def _on_activate(app):
     win.get_settings().props.gtk_application_prefer_dark_theme = True
     win.set_child(server_list_widget)
     _load_cached_server_list(server_list_widget)
-    GLib.timeout_add_seconds(10, _load_cached_server_list, server_list_widget)
+    GLib.timeout_add_seconds(5, _load_cached_server_list, server_list_widget)
     win.present()
 
 

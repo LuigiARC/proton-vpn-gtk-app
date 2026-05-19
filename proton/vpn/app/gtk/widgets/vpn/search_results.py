@@ -20,9 +20,13 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
-from typing import Callable, List, Optional, Set, Tuple, Generator
+from typing import Callable, Iterable, Optional, Set, Tuple
 
 from gi.repository import GObject
+
+from proton.vpn.session.servers.logicals import (
+    sort_servers_alphabetically_by_country_and_server_name
+)
 
 from proton.vpn.app.gtk import Gtk
 from proton.vpn import logging
@@ -46,17 +50,17 @@ LOAD_COLOR = "Grey"  # We want to show the load % in grey.
 
 class FilteredList(Gtk.TreeView):
     """
-    Displays a list of countries, cities and servers in a tree view.
+    Displays a list of countries, locations and servers in a tree view.
     """
     def __init__(
         self,
-        countries: Callable[[Optional[str]], List[(str, int)]],
-        cities: Callable[[Optional[str]], List[(str, int)]],
-        servers: Callable[[Optional[str]], List[(str, int)]]
+        countries: Callable[[Optional[str]], Iterable[Tuple[Optional[str], Optional[int]]]],
+        locations: Callable[[Optional[str]], Iterable[Tuple[Optional[str], Optional[int]]]],
+        servers: Callable[[Optional[str]], Iterable[Tuple[Optional[str], Optional[int]]]]
     ):
         super().__init__()
         self._countries = countries
-        self._cities = cities
+        self._locations = locations
         self._servers = servers
         self._model = Gtk.TreeStore(str, str, str, bool)
         self.set_model(Gtk.TreeModelSort(model=self._model))
@@ -102,23 +106,23 @@ class FilteredList(Gtk.TreeView):
 
         self.set_headers_visible(False)
 
-    def update(self, search_text: str = None):
+    def update(self, search_text: Optional[str] = None):
         """Rebuild the view using the search_text as a filter"""
         self._model.clear()
 
         sections = (
-            ("Countries", self._countries),
-            ("Cities", self._cities),
-            ("Servers", self._servers)
+            ("Countries", self._countries, ""),
+            ("Locations", self._locations, ""),
+            ("Servers", self._servers, "Server load")
         )
 
         for section in sections:
-            section_name, section_data = section
+            section_name, section_data, section_load_header = section
             data = list(section_data(search_text))
             if not data:
                 continue
 
-            row = [f"{section_name} ({len(data)})", "", LOAD_COLOR, False]
+            row = [f"{section_name} ({len(data)})", section_load_header, LOAD_COLOR, False]
             root = self._model.append(None, row)
             for i, (name, load) in enumerate(data):
                 load_string = "" if load is None else f"{load}%"
@@ -140,8 +144,9 @@ class SearchResults(Gtk.ScrolledWindow):
     """Display a filtered view of countries and servers.
        Inside a scroll-able widget.
     """
-    def __init__(self, controller, city_view_enabled: bool):
+    def __init__(self, controller):
         super().__init__()
+        self.set_name("search-results")
         self.set_policy(
             hscrollbar_policy=Gtk.PolicyType.NEVER,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC
@@ -151,42 +156,44 @@ class SearchResults(Gtk.ScrolledWindow):
         self.set_child(self._container)
         self.set_property("height-request", 200)
 
-        self._revealer = None
+        self._revealer: Optional[Gtk.Revealer] = None
 
-        def countries(search_text: str = None) -> Set(Optional[Tuple[str, None]]):
-            result = set({})
+        def countries(search_text: Optional[str] = None) -> Set[Tuple[Optional[str], None]]:
+            result: Set[Tuple[Optional[str], None]] = set()
             server_list = controller.server_list
 
             if not server_list:
                 return result
 
             for server in controller.server_list:
-                if self._search_input_exists(search_text, server, entry_country_name=True):
+                if not server.under_maintenance and \
+                        self._search_input_exists(search_text, server, entry_country_name=True):
                     result.add((server.entry_country_name, None))
 
             return result
 
-        if city_view_enabled:
-            def cities(search_text: str = None) -> Generator[Tuple[Optional[str], Optional[int]]]:
-                result = set({})
-                server_list = controller.server_list
+        def locations(
+            search_text: Optional[str] = None
+        ) -> Iterable[Tuple[Optional[str], Optional[int]]]:
+            result = set({})
+            server_list = controller.server_list
 
-                if not server_list:
-                    yield (None, None)
+            if not server_list:
+                yield (None, None)
+                return
 
-                for server in controller.server_list:
-                    if self._search_input_exists(search_text, server, city_name=True):
-                        city_name = server.city
-                        if city_name:
-                            result.add(city_name)
+            for server in controller.server_list:
+                if not server.under_maintenance and \
+                        self._search_input_exists(search_text, server, location_name=True):
+                    if server.location:
+                        result.add(server.location)
 
-                for city_name in sorted(result):
-                    yield (city_name, None)
-        else:
-            def cities(search_text: str = None) -> None:  # pylint: disable=unused-argument
-                return set({})
+            for location in sorted(result):
+                yield (location, None)
 
-        def servers(search_text: str = None) -> Generator[Tuple[Optional[str], Optional[int]]]:
+        def servers(
+            search_text: Optional[str] = None
+        ) -> Iterable[Tuple[Optional[str], Optional[int]]]:
             def user_tier_allows_access_to_server(server_tier: int, user_tier: int) -> bool:
                 return server_tier <= user_tier
 
@@ -194,15 +201,21 @@ class SearchResults(Gtk.ScrolledWindow):
             server_list = controller.server_list
             if not server_list:
                 yield (None, None)
+                return
 
-            for server in controller.server_list:
-                if not user_tier_allows_access_to_server(server.tier, user_tier):
-                    continue
+            matches = [
+                server for server in server_list
+                if not server.under_maintenance
+                and user_tier_allows_access_to_server(server.tier, user_tier)
+                and self._search_input_exists(search_text, server, server_name=True)
+            ]
+            for server in sorted(
+                matches,
+                key=sort_servers_alphabetically_by_country_and_server_name
+            ):
+                yield (server.name, server.load)
 
-                if self._search_input_exists(search_text, server, server_name=True):
-                    yield (server.name, server.load)
-
-        self._filtered_country_list = FilteredList(countries, cities, servers)
+        self._filtered_country_list = FilteredList(countries, locations, servers)
         self._filtered_country_list.connect(
             "row-activated", self._on_row_activated
         )
@@ -210,19 +223,19 @@ class SearchResults(Gtk.ScrolledWindow):
         self._container.append(self._filtered_country_list)
 
     def _search_input_exists(  # pylint: disable=too-many-arguments
-        self, search_text: str, server, entry_country_name: bool = False,
-        city_name: bool = False, server_name: bool = False
+        self, search_text: Optional[str], server, entry_country_name: bool = False,
+        location_name: bool = False, server_name: bool = False
     ) -> bool:
         if entry_country_name:
-            return search_text and (search_text in server.entry_country_name.lower())
+            return bool(search_text and (search_text in server.entry_country_name.lower()))
 
-        if city_name:
-            return search_text and server.city and (search_text in server.city.lower())
+        if location_name:
+            return bool(search_text and (search_text in server.location.lower()))
 
         if server_name:
-            return search_text and (search_text in server.name.lower())
+            return bool(search_text and (search_text in server.name.lower()))
 
-        return None
+        return False
 
     @GObject.Signal(name="result-chosen", arg_types=(str,))
     def result_chosen(self, _row: str):

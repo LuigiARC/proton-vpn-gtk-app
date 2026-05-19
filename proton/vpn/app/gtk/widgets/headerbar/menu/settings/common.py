@@ -19,13 +19,17 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
-from typing import List, Tuple, Callable, Any
+from contextlib import contextmanager
+from typing import List, Tuple, Callable, Any, Optional, TYPE_CHECKING, cast
 from gi.repository import Gtk, Gio
 
 from proton.vpn.app.gtk.widgets.main.confirmation_dialog \
     import ConfirmationDialog, show_confirmation_dialog
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn import logging
+
+if TYPE_CHECKING:
+    from proton.vpn.app.gtk.conflicts import Conflict
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +90,16 @@ class BaseCategoryContainer(Gtk.Box):
         self.set_spacing(15)
 
         self.append(CategoryHeader(category_name))
+
+
+class BetaTag(Gtk.Label):
+    """A label styled with a purple border to indicate a beta feature."""
+    LABEL = "BETA"
+
+    def __init__(self):
+        super().__init__(label=self.LABEL)
+        self.add_css_class("beta-tag")
+        self.set_valign(Gtk.Align.CENTER)
 
 
 class UpgradePlusTag(Gtk.Button):
@@ -205,9 +219,9 @@ class ToggleWidget(Gtk.Grid):  # pylint: disable=too-many-instance-attributes
         description: str,
         setting_name: str,
         requires_subscription_to_be_active: bool = False,
-        callback: Callable = None,
+        callback: Optional[Callable] = None,
         disable_on_active_connection: bool = False,
-        enabled: bool = None,
+        enabled: Optional[bool] = None,
         display_tooltip_only_on_active_connection: bool = False
     ):
         super().__init__()
@@ -238,7 +252,7 @@ class ToggleWidget(Gtk.Grid):  # pylint: disable=too-many-instance-attributes
 
     def get_setting(self) -> bool:
         """Shortcut property that returns the current setting"""
-        return self._controller.get_setting_attr(self._setting_name)
+        return cast(bool, self._controller.get_setting_attr(self._setting_name))
 
     def save_setting(self, new_value: bool):
         """Shortcut property that sets the new setting and stores to disk."""
@@ -335,9 +349,9 @@ class ConflictableToggleWidget(ToggleWidget):  # pylint: disable=too-many-instan
         do_revert: Callable[[ToggleWidget], None],
         requires_subscription: bool = False,
         disable_on_active_connection: bool = False,
-        enabled: bool = None,
+        enabled: Optional[bool] = None,
         display_tooltip_only_on_active_connection: bool = False,
-        conflict_resolver: Callable[[str, Any], str] = None,
+        conflict_resolver: Optional[Callable[[str, Any], Optional["Conflict"]]] = None,
     ):
         super().__init__(
             controller=controller, title=title,
@@ -405,9 +419,9 @@ class ComboboxWidget(Gtk.Grid):  # pylint: disable=too-many-instance-attributes
         title: str,
         setting_name: str,
         combobox_options: List[Tuple[int, str]],
-        description: str = None,
+        description: Optional[str] = None,
         requires_subscription_to_be_active: bool = False,
-        callback: Callable = None,
+        callback: Optional[Callable] = None,
         disable_on_active_connection: bool = False
     ):
         super().__init__()
@@ -458,7 +472,7 @@ class ComboboxWidget(Gtk.Grid):  # pylint: disable=too-many-instance-attributes
         self.set_row_spacing(10)
         self.set_column_spacing(100)
 
-    def _build_combobox(self) -> Gtk.Switch:
+    def _build_combobox(self) -> Gtk.ComboBoxText:
         combobox = Gtk.ComboBoxText()
         for value, display in self._combobox_options:
             combobox.append(str(value), display)
@@ -500,6 +514,16 @@ class ComboboxWidget(Gtk.Grid):  # pylint: disable=too-many-instance-attributes
             self._controller.user_tier
         )
 
+    @contextmanager
+    def pause_callback(self):
+        """Context manager that temporarily blocks the combobox 'changed' signal."""
+        handler = self._callback or self._on_combobox_change
+        self.combobox.handler_block_by_func(handler)
+        try:
+            yield
+        finally:
+            self.combobox.handler_unblock_by_func(handler)
+
     def _on_combobox_change(self, combobox: Gtk.ComboBox):
         model = combobox.get_model()
         treeiter = combobox.get_active_iter()
@@ -525,7 +549,7 @@ class ConflictableComboboxWidget(ComboboxWidget):
         combobox_options: List[Tuple[int, str]],
         do_set: Callable[[ComboboxWidget, int], None],
         do_revert: Callable[[ComboboxWidget], None],
-        description: str = None,
+        description: Optional[str] = None,
         requires_subscription: bool = False,
         disable_on_active_connection: bool = False
     ):
@@ -591,7 +615,7 @@ class EntryWidget(Gtk.Grid):
         title: str,
         setting_name: str,
         description: str,
-        callback: Callable = None,
+        callback: Optional[Callable] = None,
         requires_subscription_to_be_active: bool = False,
     ):
         super().__init__()
@@ -615,7 +639,7 @@ class EntryWidget(Gtk.Grid):
         """Set if the widget should be active or not."""
         self.set_property("sensitive", new_value)
 
-    def get_setting(self) -> bool:
+    def get_setting(self) -> object:
         """Shortcut property that returns the current setting"""
         return self._controller.get_setting_attr(self._setting_name)
 
@@ -648,20 +672,9 @@ class EntryWidget(Gtk.Grid):
 
         entry.set_text(str(value))
         if self._callback:
-            focus_controller = Gtk.EventControllerFocus()
-            focus_controller.connect(
-                "leave",
-                lambda controller, *args: self._callback(entry, self, *args)
-            )
-            entry.add_controller(focus_controller)
+            entry.connect("changed", lambda *args: self._callback(entry, self, *args))
         else:
-            focus_controller = Gtk.EventControllerFocus()
-            focus_controller.connect(
-                "leave",
-                lambda controller, *args: self._on_focus_out_event(entry, *args)
-            )
-            entry.add_controller(focus_controller)
-
+            entry.connect("changed", self._on_changed_event)
         return entry
 
     def change_value(self, new_value: str):
@@ -689,7 +702,7 @@ class EntryWidget(Gtk.Grid):
         if self.description:
             self.attach(self.description, 0, 1, 2, 1)
 
-    def _on_focus_out_event(self, gtk_widget: Gtk.Entry, *_):
+    def _on_changed_event(self, gtk_widget: Gtk.Entry, *_):
         self.save_setting(gtk_widget.get_text())
 
     @property

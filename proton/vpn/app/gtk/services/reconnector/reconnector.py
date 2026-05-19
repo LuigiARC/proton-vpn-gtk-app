@@ -20,6 +20,7 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 import random
+from typing import Optional
 
 from gi.repository import GLib
 from proton.vpn.core.refresher import VPNDataRefresher
@@ -28,7 +29,7 @@ from proton.vpn import logging
 from proton.vpn.connection import states, VPNConnection, events
 from proton.vpn.connection.exceptions import VPNConnectionError, \
     AuthenticationError, HardJailedTwoFAError
-from proton.vpn.core.connection import VPNConnector
+from proton.vpn.core.vpnconnector import VPNConnector
 
 from proton.vpn.app.gtk.services.reconnector.network_monitor import NetworkMonitor
 from proton.vpn.app.gtk.services.reconnector.session_monitor import SessionMonitor
@@ -76,8 +77,8 @@ class VPNReconnector:  # pylint: disable=too-many-instance-attributes
 
         self._executor = async_executor
 
-        self._new_certificate_src_id = None
-        self._retry_src_id = None
+        self._new_certificate_src_id: Optional[int] = None
+        self._retry_src_id: Optional[int] = None
         self.retry_counter = 0
 
     @property

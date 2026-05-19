@@ -20,14 +20,15 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from gi.repository import GObject, Gtk, Gdk, GLib, Gio
+from typing import Any, Optional
+from gi.repository import GObject, Gtk, Gdk, GLib
 
 from proton.vpn import logging
 
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.main.main_window import MainWindow
 from proton.vpn.app.gtk.assets.style import STYLE_PATH
-from proton.vpn.app.gtk.util import APPLICATION_ID
+from proton.vpn.app.gtk.util import APPLICATION_ID, log_proton_package_versions
 from proton.vpn.app.gtk.widgets.main.tray_indicator import TrayIndicator, TrayIndicatorNotSupported
 
 logger = logging.getLogger(__name__)
@@ -57,10 +58,11 @@ class App(Gtk.Application):
             flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE # 
         )
         logger.info(f"{self=}", category="APP", event="PROCESS_START")
+        log_proton_package_versions()
         self._controller = controller
-        self.window = None
+        self.window: Optional[MainWindow] = None
         self._tray_indicator = None
-        self._signal_connect_queue = []
+        self._signal_connect_queue: list[Any] = []
         self._start_minimized_from_cli = False
         self.add_options()
 
@@ -153,7 +155,7 @@ class App(Gtk.Application):
         Gives access to currently opened error message dialogs. This method
         was made available for testing purposes.
         """
-        return self.window.main_widget.notifications.error_dialog  # pylint: disable=W0212
+        return self.window.main_widget.notifications.error_dialog
 
     @GObject.Signal(name="app-ready")
     def app_ready(self):

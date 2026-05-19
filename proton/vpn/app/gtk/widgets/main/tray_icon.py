@@ -43,9 +43,10 @@ Usage:
     # Setup (call before app.run())
     tray.setup()
 """
-from typing import Callable
+from typing import Callable, Optional
 from enum import Enum
 from dataclasses import dataclass
+import os
 import dbus
 import dbus.service
 import dbus.mainloop.glib
@@ -97,8 +98,8 @@ class MenuObject:
     """Object that represents an entry in tray menu."""
     id: int  # pylint: disable=invalid-name
     type: MenuType
-    label: str = None
-    callback: Callable = None
+    label: Optional[str] = None
+    callback: Optional[Callable] = None
     enabled: bool = True
     visible: bool = True
 
@@ -139,7 +140,7 @@ class _DBusMenuService(dbus.service.Object):
         return structure
 
     def _build_layout(
-        self, parent_id, properties, menu: list[dict[int, dbus.Dictionary]] = None
+        self, parent_id, properties, menu: Optional[list[dict[int, dbus.Dictionary]]] = None
     ):
         """Build layout for GetLayout."""
 
@@ -239,7 +240,7 @@ class _StatusNotifierItem(dbus.service.Object):
         self.bus = bus
 
         # Generate unique bus name
-        self.bus_name_str = f"org.kde.StatusNotifierItem-{tray_icon.app_id}-{id(self)}"
+        self.bus_name_str = f"org.kde.StatusNotifierItem-{tray_icon.app_id}-{os.getpid()}"
         self.bus_name = dbus.service.BusName(self.bus_name_str, bus)
 
         super().__init__(self.bus_name, object_path)

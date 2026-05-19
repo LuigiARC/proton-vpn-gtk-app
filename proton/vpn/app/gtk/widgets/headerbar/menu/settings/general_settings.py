@@ -19,7 +19,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, Optional
 from gi.repository import Gtk
 from proton.vpn import logging
 from proton.vpn.app.gtk.controller import Controller
@@ -42,27 +42,28 @@ class TrayPinnedServersWidget(EntryWidget):
         "(e.g.: NL#42, JP, US, IT#01)."
     SETTING_NAME = "app_configuration.tray_pinned_servers"
 
-    def __init__(self, controller: Controller, tray_indicator: "TrayIndicator" = None):
+    def __init__(self, controller: Controller, tray_indicator: Optional["TrayIndicator"] = None):
         super().__init__(
             controller=controller,
             title=self.TRAY_PINNED_SERVERS_LABEL,
             description=self.TRAY_PINNED_SERVERS_DESCRIPTION,
             setting_name=self.SETTING_NAME,
-            callback=self._on_focus_outside_entry
+            callback=self._save_and_reload_pinned_servers
         )
         self._controller = controller
         self._tray_indicator = tray_indicator
 
-    def _on_focus_outside_entry(self, entry: Gtk.Entry, *_):
+    def _save_and_reload_pinned_servers(self, entry: Gtk.Entry, *_):
         self.save_setting(entry.get_text())
-        self._tray_indicator.reload_pinned_servers()
+        if self._tray_indicator:
+            self._tray_indicator.reload_pinned_servers()
 
     def get_setting(self):
         """Shortcut property that sets the new setting and stores to disk."""
         tray_pinned_servers = self._controller.get_setting_attr(self.SETTING_NAME)
         return ', '.join(tray_pinned_servers)
 
-    def save_setting(self, new_value: List[str]):  # noqa: F811
+    def save_setting(self, new_value: str):  # noqa: F811
         """Returns if the the upgrade tag has overridden original interactive
         object."""
         server_list = []
@@ -114,8 +115,8 @@ class GeneralSettings(BaseCategoryContainer):  # pylint: disable=too-many-instan
 
     def build_connect_at_app_startup(self):
         """Builds and adds the `connect_at_app_startup` setting to the widget."""
-        def on_focus_out_callback(entry: Gtk.Entry, entry_widget: EntryWidget, *_):
-            new_value = entry.get_text().strip().upper()
+        def _format_and_save_autoconnect_field(entry: Gtk.Entry, entry_widget: EntryWidget, *_):
+            new_value: Optional[str] = entry.get_text().strip().upper()
             if new_value == "OFF":
                 new_value = None
 
@@ -126,7 +127,7 @@ class GeneralSettings(BaseCategoryContainer):  # pylint: disable=too-many-instan
             title=self.CONNECT_AT_APP_STARTUP_LABEL,
             description=self.CONNECT_AT_APP_STARTUP_DESCRIPTION,
             setting_name="app_configuration.connect_at_app_startup",
-            callback=on_focus_out_callback
+            callback=_format_and_save_autoconnect_field
         ))
 
     def build_start_app_minimized(self):

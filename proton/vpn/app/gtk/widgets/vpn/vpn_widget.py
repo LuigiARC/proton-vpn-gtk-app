@@ -22,7 +22,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 import time
 
 from gi.repository import GObject, GLib
@@ -35,8 +35,8 @@ from proton.vpn.app.gtk import Gtk
 from proton.vpn.app.gtk.widgets.vpn.quick_connect_widget import QuickConnectWidget
 from proton.vpn.app.gtk.widgets.vpn.search_results import SearchResults
 from proton.vpn.app.gtk.widgets.vpn.search_entry import SearchEntry
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.serverlist import ServerListWidget
 from proton.vpn.app.gtk.widgets.vpn.connection_status_widget import VPNConnectionStatusWidget
-from proton.vpn.app.gtk.widgets.main.loading_widget import OverlayWidget
 from proton.vpn.app.gtk.widgets.main.notifications import Notifications
 from proton.vpn.session.servers import ServerList
 
@@ -60,8 +60,8 @@ class VPNWidgetState:
         load_start_time: timestamp set when the widget starts loading.
     """
     is_widget_ready: bool = False
-    user_tier: int = None
-    load_start_time: int = None
+    user_tier: Optional[int] = None
+    load_start_time: Optional[float] = None
 
 
 # pylint: disable=too-many-instance-attributes
@@ -70,7 +70,7 @@ class VPNWidget(Gtk.Box):
 
     def __init__(
         self, controller: Controller,
-        main_window: "MainWindow", overlay_widget: OverlayWidget,
+        main_window: "MainWindow",
         notifications=Notifications
     ):
         super().__init__(spacing=10)
@@ -81,59 +81,65 @@ class VPNWidget(Gtk.Box):
         self._controller = controller
 
         self.connection_status_widget = VPNConnectionStatusWidget(
-            controller, overlay_widget, notifications
+            controller, notifications
         )
         self.append(self.connection_status_widget)
+
+        self._connected_signals: list[tuple[int, Gtk.Widget]] = []
 
         self.quick_connect_widget = QuickConnectWidget(self._controller)
         self.append(self.quick_connect_widget)
 
-        city_view_enabled = self._controller.feature_flags.get("CityView")
-        if city_view_enabled:
-            from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.serverlist \
-                import ServerListWidget  # pylint: disable=import-outside-toplevel
-        else:
-            from proton.vpn.app.gtk.widgets.vpn.serverlist.serverlist \
-                import ServerListWidget  # pylint: disable=import-outside-toplevel
-
-        self.server_list_widget = ServerListWidget(self._controller)
-        self.append(self.server_list_widget)
-        self.server_list_widget.connect("ui-updated",
-                                        self._on_server_list_updated)
-
         self.search_widget = SearchEntry()
+        self.server_list_widget = ServerListWidget(self._controller, self.search_widget)
+        self.append(self.server_list_widget)
+        self._connected_signals.append((
+            self.server_list_widget.connect("ui-updated", self._on_server_list_updated),
+            self.server_list_widget
+        ))
         main_window.add_keyboard_shortcut(
             target_widget=self.search_widget,
             target_signal="request_focus",
             shortcut="<Control>f"
         )
-        self.search_results_widget = SearchResults(self._controller, city_view_enabled)
+        self.search_results_widget = SearchResults(self._controller)
         revealer = Gtk.Revealer()
         revealer.set_child(self.search_results_widget)
 
-        self.search_widget.connect(
-            "search-changed",
-            self.search_results_widget.on_search_changed,
-            revealer
-        )
-        self.search_results_widget.connect(
-            "result-chosen",
-            self.server_list_widget.focus_on_entry
-        )
-        self.search_results_widget.connect(
-            "result-chosen",
-            lambda _, row: self.search_widget.reset()  # pylint: disable=no-member, disable=line-too-long # noqa: E501 # nosemgrep: python.lang.correctness.return-in-init.return-in-init
-        )
+        self._connected_signals.append((
+            self.search_widget.connect(
+                "search-changed",
+                self.search_results_widget.on_search_changed,
+                revealer
+            ),
+            self.search_widget
+        ))
+        self._connected_signals.append((
+            self.search_results_widget.connect(
+                "result-chosen",
+                self.server_list_widget.focus_on_entry
+            ),
+            self.search_results_widget
+        ))
+        self._connected_signals.append((
+            self.search_results_widget.connect(
+                "result-chosen",
+                lambda _, row: self.search_widget.reset()
+            ),
+            self.search_results_widget
+        ))
         self.insert_child_after(self.search_widget, self.quick_connect_widget)
         self.insert_child_after(revealer, self.search_widget)
 
-        self.connection_status_subscribers = []
         for widget in [
             self.connection_status_widget,
             self.quick_connect_widget,
-            self.server_list_widget,
         ]:
-            self.connection_status_subscribers.append(widget)
+            signal_id = self.connect(
+                "connection-state-changed",
+                lambda _, state, w=widget: w.connection_status_update(state)
+            )
+            self._connected_signals.append((signal_id, self))
 
         self.set_orientation(Gtk.Orientation.VERTICAL)
 
@@ -142,6 +148,10 @@ class VPNWidget(Gtk.Box):
     @GObject.Signal
     def vpn_widget_ready(self):
         """Signal emitted when all resources were loaded and widget is ready."""
+
+    @GObject.Signal(name="connection-state-changed", arg_types=(object,))
+    def connection_state_changed(self, state: State):
+        """Signal emitted whenever the VPN connection state changes."""
 
     @property
     def user_tier(self) -> int:
@@ -158,11 +168,7 @@ class VPNWidget(Gtk.Box):
             f"{type(connection_state).__name__}."
         )
 
-        def update_widget():
-            for widget in self.connection_status_subscribers:
-                widget.connection_status_update(connection_state)
-
-        GLib.idle_add(update_widget)
+        GLib.idle_add(self.emit, "connection-state-changed", connection_state)
 
     def _on_refresher_enabled(
             self,
@@ -191,6 +197,10 @@ class VPNWidget(Gtk.Box):
         self._controller.register_connection_status_subscriber(self)
         self._controller.reconnector.enable()
 
+        # Apply the correct connection state immediately so there's no flash of
+        # "Unprotected" when the app starts already connected.
+        self.status_update(self._controller.current_connection_status)
+
         self.server_list_widget.display(user_tier=user_tier, server_list=server_list)
 
     def _on_server_list_updated(self, *_):
@@ -207,6 +217,9 @@ class VPNWidget(Gtk.Box):
 
     def unload(self):
         """Unloads the widget and resets its state."""
+        for signal_id, widget in self._connected_signals:
+            widget.disconnect(signal_id)
+        self._connected_signals.clear()
         self._controller.disconnect()
 
         self._controller.unregister_connection_status_subscriber(self)
