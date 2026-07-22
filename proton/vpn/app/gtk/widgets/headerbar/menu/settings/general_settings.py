@@ -225,8 +225,8 @@ class GeneralSettings(BaseCategoryContainer):  # pylint: disable=too-many-instan
     CONNECT_AT_APP_STARTUP_LABEL = "Auto connect"
     CONNECT_AT_APP_STARTUP_DESCRIPTION = "You will be connected to a server as "\
         "soon as Proton VPN app starts. Replace it with a country ISO code "\
-        "(e.g.: US for United States), a server (e.g.: NL#42)"\
-        " or Fastest for quick connection. Default value: Off."
+        "(e.g.: US for United States), a city (e.g.: Tokyo), a server "\
+        "(e.g.: NL#42), Fastest, or Random. Default value: Off."
     START_APP_MINIMIZED_LABEL = "Start app minimized"
     START_APP_MINIMIZED_DESCRIPTION = "When enabled, the app starts minimized "\
         "to the tray."
