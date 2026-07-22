@@ -17,17 +17,17 @@ MockWireGuard.ui_protocol = "WireGuard"
 
 
 @pytest.mark.parametrize(
-    "connect_at_app_startup_value, app_start_on_login_widget, method_name, call_arg",
+    "connect_at_app_startup_value, method_name, call_arg",
     [
-        ("FASTEST", True, "connect_to_fastest_server", None),
-        ("PT", False,  "connect_to_country", None),
-        ("PT#1", True,  "connect_to_server", "PT#1"),
-        ("PT", True,  "connect_to_country", "PT"),
+        ("FASTEST", "connect_to_fastest_server", None),
+        ("RANDOM", "connect_to_random_server", None),
+        ("PT#1", "connect_to_server", "PT#1"),
+        ("PT", "connect_to_country", "PT"),
+        ("TOKYO", "connect_to_city", "TOKYO"),
     ]
 )
 def test_autoconnect_feature(
-    connect_at_app_startup_value, app_start_on_login_widget,
-    method_name, call_arg
+    connect_at_app_startup_value, method_name, call_arg
 ):
     app_configuration_mock = Mock()
     app_configuration_mock.connect_at_app_startup = connect_at_app_startup_value
@@ -47,6 +47,25 @@ def test_autoconnect_feature(
             mock_method.assert_called_once_with(call_arg) 
         else:
             mock_method.assert_called_once()
+
+
+def test_connect_to_city_uses_fastest_server_in_city():
+    server = Mock()
+    api = Mock()
+    api.server_list.get_fastest_in_city.return_value = server
+    controller = Controller(
+        executor=Mock(),
+        exception_handler=Mock(),
+        api=api,
+        vpn_reconnector=Mock(),
+        app_config=Mock()
+    )
+
+    with patch.object(controller, "_connect_to_vpn") as connect_to_vpn:
+        controller.connect_to_city("Tokyo")
+
+    api.server_list.get_fastest_in_city.assert_called_once_with("Tokyo")
+    connect_to_vpn.assert_called_once_with(server)
 
 
 def test_submit_nps_survey_response_delegates_to_api():

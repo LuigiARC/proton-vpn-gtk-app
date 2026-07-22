@@ -10,3 +10,7 @@ venv_testing
 .vscode
 dist/
 package.spec
+
+pkg/
+PKGBUILD
+*.tar.zst

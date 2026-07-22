@@ -96,6 +96,7 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         self.reconnector = vpn_reconnector
 
         self._app_config = app_config
+        self._connect_at_app_startup_override = None
         self._cache_handler = cache_handler or CacheHandler(APP_CONFIG)
         self._settings_watchers = SettingsWatchers()
 
@@ -186,23 +187,25 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
             "Running startup actions",
             category="app", subcategory="startup", event="startup_actions"
         )
-        if (
-            self.user_logged_in
-            and self.get_app_configuration().connect_at_app_startup
-        ):
-            self.autoconnect()
+        if self.user_logged_in:
+            connect_to = self._connect_at_app_startup
+            if connect_to:
+                self.autoconnect(connect_to)
 
-    def autoconnect(self) -> Future:
+    def autoconnect(self, connect_to: str = None) -> Future:
         """Connects to a server from app configuration.
             This method is intended to be called at app startup.
         """
-        connect_at_app_startup = self.get_app_configuration().connect_at_app_startup
+        if connect_to is None:
+            connect_to = self._connect_at_app_startup
 
         # Temporary hack for parsing. Should be improved
-        if connect_at_app_startup == "FASTEST":
+        if connect_to == "FASTEST":
             return self.connect_to_fastest_server()
 
-        return self._connect_to(connect_at_app_startup)
+        if connect_to == "RANDOM":
+            return self.connect_to_random_server()
+        return self._connect_to(connect_to)
 
     def connect_from_tray(self, connect_to: str) -> Future:
         """Connect to servers from tray."""
@@ -212,7 +215,10 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         if "#" in connect_to:
             return self.connect_to_server(connect_to)
 
-        return self.connect_to_country(connect_to)
+        if len(connect_to) == 2:
+            return self.connect_to_country(connect_to)
+
+        return self.connect_to_city(connect_to)
 
     def connect_to_country(self, country_code: str) -> Future:
         """
@@ -222,6 +228,32 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         "connected" state.
         """
         server = self._api.server_list.get_fastest_in_country(country_code)
+        return self._connect_to_vpn(server)
+
+    def connect_to_city(self, city_name: str) -> Future:
+        """
+        Establishes a VPN connection to the fastest server in the specified city.
+        :param city_name: The city to connect to.
+        :return: A Future object that resolves once the connection reaches the
+        "connected" state.
+        """
+        server = self._api.server_list.get_fastest_in_city(city_name)
+        return self._connect_to_vpn(server)
+
+    def connect_to_random_server(self) -> Future:  
+        """
+        Establishes a VPN connection to a random server.
+        Uses locally cached server list since I don't have access to the api.
+        :return: A Future object that resolves once the connection reaches the
+        "connected" state.
+        """
+        import random
+        all_servers = list(self._api.server_list)
+        available_servers = [server for server in all_servers if server.enabled]
+        server = random.choice(available_servers)
+        while server.tier == 0:
+            #this is a free server and we should try again
+            server = random.choice(available_servers)
         return self._connect_to_vpn(server)
 
     def connect_to_fastest_server(self) -> Future:
@@ -579,6 +611,15 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
 
         future = self.executor.submit(disable)
         future.add_done_callback(lambda f: GLib.idle_add(f.result))
+
+    def set_connect_at_app_startup_override(self, override: Optional[str]):
+        """Sets an override for the connect_at_app_startup configuration value."""
+        self._connect_at_app_startup_override = override
+
+    @property
+    def _connect_at_app_startup(self) -> Optional[str]:
+        """Returns the current connect_at_app_startup value."""
+        return self._connect_at_app_startup_override or self.get_app_configuration().connect_at_app_startup
 
     def set_server_list_updated_callback(self, callback: Callable[[], None]):
         """Sets the callback that is called when the server list is updated."""
