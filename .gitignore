@@ -10,7 +10,8 @@ venv_testing
 .vscode
 dist/
 package.spec
-
 pkg/
 PKGBUILD
 *.tar.zst
+po/*.pot
+proton/vpn/app/gtk/locale/binaries/*

@@ -26,12 +26,21 @@ from gi.repository import GObject, Gtk, Gdk, GLib, Gio
 from proton.vpn import logging
 
 from proton.vpn.app.gtk.controller import Controller
+from proton.vpn.app.gtk.translator import C_
 from proton.vpn.app.gtk.widgets.main.main_window import MainWindow
-from proton.vpn.app.gtk.assets.style import STYLE_PATH
+from proton.vpn.app.gtk.assets.style import load_app_css
 from proton.vpn.app.gtk.util import APPLICATION_ID, log_proton_package_versions
 from proton.vpn.app.gtk.widgets.main.tray_indicator import TrayIndicator, TrayIndicatorNotSupported
 
 logger = logging.getLogger(__name__)
+
+# Return values for GApplication's handle-local-options (see
+# do_handle_local_options): a negative value continues normal startup, 0 means
+# handled locally and exit successfully, and a positive value exits with that
+# value as the error code. Also used by DemoApp (proton.vpn.app.gtk.demo.demo_app).
+CONTINUE_STARTUP = -1
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
 
 
 class App(Gtk.Application):
@@ -49,16 +58,14 @@ class App(Gtk.Application):
        exits automatically when the last one is closed.
      - It allows desktop shell integration by exporting actions and menus.
     """
-    def __init__(
-            self,
-            controller: Controller
-    ):
-        super().__init__(
-            application_id=APPLICATION_ID,
-            flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE # 
-        )
+    def __init__(self, controller: Controller):
+        flags = getattr(
+            Gio.ApplicationFlags, "DEFAULT_FLAGS", Gio.ApplicationFlags.FLAGS_NONE
+        ) | Gio.ApplicationFlags.HANDLES_COMMAND_LINE
+        super().__init__(application_id=APPLICATION_ID, flags=flags)
         logger.info(f"{self=}", category="APP", event="PROCESS_START")
         log_proton_package_versions()
+
         self._controller = controller
         self.window: Optional[MainWindow] = None
         self._tray_indicator = None
@@ -73,15 +80,7 @@ class App(Gtk.Application):
         any necessary UI elements.
         """
         Gtk.Application.do_startup(self)
-        css_provider = Gtk.CssProvider()
-        css_provider.load_from_path(str(STYLE_PATH / "main.css"))
-
-        display = Gdk.Display.get_default()
-        Gtk.StyleContext.add_provider_for_display(
-            display,
-            css_provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
+        load_app_css(Gdk.Display.get_default())
 
     def do_activate(self):  # pylint: disable=W0221
         """
@@ -137,7 +136,7 @@ class App(Gtk.Application):
         """
         if options.contains("version"):
             print(self._controller.app_version)
-            return 0
+            return EXIT_SUCCESS
 
         if options.contains("start-minimized"):
             self._start_minimized_from_cli = True
@@ -147,7 +146,7 @@ class App(Gtk.Application):
             if value is None:
                 print("Error: Missing argument for --connect/-c")
                 return 1
-        return -1
+        return CONTINUE_STARTUP
 
     @property
     def error_dialog(self) -> Gtk.MessageDialog:
@@ -184,7 +183,7 @@ class App(Gtk.Application):
             0,
             GLib.OptionFlags(0),
             GLib.OptionArg.NONE,
-            "Start minimized in the system tray"
+            C_("cli", "Start minimized in the system tray")
         )
 
         self.add_main_option(
@@ -192,7 +191,7 @@ class App(Gtk.Application):
             ord('v'),
             GLib.OptionFlags(0),
             GLib.OptionArg.NONE,
-            "Display the application's version"
+            C_("cli", "Display the application's version")
         )
 
     @property

@@ -21,6 +21,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
 import time
+import locale
 from typing import List, Optional
 import logging
 from unittest.mock import Mock
@@ -30,6 +31,8 @@ from gi.repository import GLib, GObject
 from proton.vpn import logging as proton_logging
 from proton.vpn.app.gtk import Gtk
 from proton.vpn.app.gtk.controller import Controller
+from proton.vpn.app.gtk.translator import LOCALIZATION_ENABLED
+from proton.vpn.app.gtk.utils.country import get_localized_country_name
 from proton.vpn.app.gtk.utils.safe_signal_connect import safe_signal_connect
 from proton.vpn.session.servers import ServerList, TierEnum
 from proton.vpn.session.servers.server_list_fetcher import ServerListFetcher
@@ -88,6 +91,7 @@ class ServerListWidget(Gtk.ScrolledWindow):
         self._populate_countries(server_list)
         self._controller.set_server_list_updated_callback(self._on_server_list_update)
         self._controller.set_server_loads_updated_callback(self._on_server_loads_update)
+        self._controller.set_location_names_updated_callback(self._on_location_names_update)
         self.emit("ui-updated")
 
     def focus_on_entry(self, _widget, name_to_search: str) -> None:
@@ -138,9 +142,16 @@ class ServerListWidget(Gtk.ScrolledWindow):
             group_by_location=True,
             include_free_servers=free_user
         )
-        if free_user:
-            # If the current user has a free account, sort the countries having
-            # free servers first.
+
+        if LOCALIZATION_ENABLED:
+            # Sort by the localized name so the order matches what's displayed.
+            # Free users get their free countries listed first.
+            countries.sort(key=lambda country: (
+                0 if (free_user and country.free) else 1,
+                locale.strxfrm(get_localized_country_name(country.code)),
+            ))
+        elif free_user:
+            # Free countries first, then by English name.
             countries.sort(key=lambda country: (0 if country.free else 1, country.name))
 
         # Collect expanded states before refresh (keyed by country code and child group name)
@@ -190,10 +201,20 @@ class ServerListWidget(Gtk.ScrolledWindow):
             f"{time.time() - start:.2f} seconds."
         )
 
+    def _on_location_names_update(self):
+        """Whenever refreshed location (city/state) names arrive the UI should be updated."""
+        start = time.time()
+        self.display(self._user_tier, self._controller.server_list)
+        logger.info(
+            "Location names widget update completed in "
+            f"{time.time() - start:.2f} seconds."
+        )
+
     def unload(self):
         """Unloads the server list widget and its resources."""
         self._controller.unset_server_list_updated_callback()
         self._controller.unset_server_loads_updated_callback()
+        self._controller.unset_location_names_updated_callback()
         self._remove_country_rows()
 
 

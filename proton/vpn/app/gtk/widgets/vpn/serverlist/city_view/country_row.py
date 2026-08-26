@@ -22,12 +22,12 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
-from itertools import chain
 from typing import List, Optional
 
 from proton.vpn.session.servers import Country, Location, TierEnum
 from proton.vpn.app.gtk import Gtk
 from proton.vpn.app.gtk.controller import Controller
+from proton.vpn.app.gtk.translator import C_
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.location_row import LocationRow
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.expandable_row import ExpandableRow
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.row_view_model import RowViewModel
@@ -36,6 +36,7 @@ from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.utils \
     import make_connect_callback, sync_rows_with_model_items
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.secure_core_row import SecureCoreRow
 from proton.vpn.app.gtk.widgets.vpn.serverlist.icons import CountryFlagIcon
+from proton.vpn.app.gtk.utils.country import get_localized_country_name
 
 
 # pylint: disable=too-many-instance-attributes
@@ -45,6 +46,7 @@ class CountryRow(Gtk.Box):
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self._country: Optional[Country] = None
+        self._localized_country_name = None
         self._controller = None
         self._user_tier = None
         self._expanded_groups: set[str] = set()
@@ -86,9 +88,11 @@ class CountryRow(Gtk.Box):
         self._expanded_groups = expanded_groups
         self._expandable_row.connect_toggle()
         upgrade_required = user_tier == TierEnum.FREE and not country.free
+        localized_country_name = get_localized_country_name(country.code)
+        self._localized_country_name = localized_country_name
 
         row_data = RowViewModel(
-            name=country.name,
+            name=localized_country_name,
             on_connect=make_connect_callback(controller, country.servers, user_tier),
             free=country.free,
             under_maintenance=country.under_maintenance and not upgrade_required,
@@ -98,13 +102,21 @@ class CountryRow(Gtk.Box):
             upgrade_required=upgrade_required,
             icon_factory=lambda c=country: CountryFlagIcon(c.code),
             connect_button_tooltip=(
-                f"Upgrade to connect to {country.name}"
+                C_("tooltip", "Upgrade to connect to {country_name}").format(
+                    country_name=localized_country_name
+                )
                 if upgrade_required else
-                f"Connect to {country.name}"
+                C_("tooltip", "Connect to {country_name}").format(
+                    country_name=localized_country_name
+                )
             ),
             toggle_button_tooltips=(
-                f"Show all locations from {country.name}",
-                f"Hide all locations from {country.name}",
+                C_("tooltip", "Show all locations from {country_name}").format(
+                    country_name=localized_country_name
+                ),
+                C_("tooltip", "Hide all locations from {country_name}").format(
+                    country_name=localized_country_name
+                ),
             ),
         )
         self._expandable_row.row_content.display(row_data)
@@ -125,8 +137,8 @@ class CountryRow(Gtk.Box):
 
     @property
     def country_name(self):
-        """Returns this row's country name."""
-        return self._country.name
+        """Returns this row's localized country name (as shown on the row)."""
+        return self._localized_country_name
 
     @property
     def country_code(self):
@@ -216,10 +228,13 @@ class CountryRow(Gtk.Box):
         expanded_locations = expanded_locations or set()
         runtime_assert(self._country is not None, "Country is not set")
 
-        locations = self._country.locations
+        # location.name is already localized to the active locale by the API.
         if self._user_tier == TierEnum.FREE and self._country.free:
             # If the current user has a free account, display first the free locations
-            locations = list(chain(self._country.free_locations, self._country.paid_locations))
+            locations = sorted(self._country.free_locations, key=lambda loc: loc.name) \
+                + sorted(self._country.paid_locations, key=lambda loc: loc.name)
+        else:
+            locations = sorted(self._country.locations, key=lambda loc: loc.name)
 
         def display_location_row(location_row, location):
             location_expanded = location.name.lower() in expanded_locations

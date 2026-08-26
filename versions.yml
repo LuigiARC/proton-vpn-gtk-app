@@ -1,3 +1,53 @@
+version: 4.18.0
+time: 2026/08/12 14:27
+author: Axel Langenskiold
+email: axel.langenskiold@proton.ch
+description:
+- "chore: Align release notes version with versions.yml. (Axel Langenskiold)" 
+- "i18n(weekly-mr): Upgrade translations from crowdin (4cbece7f). (L10n bot)"
+- "chore: Add logging of resolved language and locale. (Axel Langenskiold)"
+- "i18n(weekly-mr): Upgrade translations from crowdin (57973777). (L10n bot)"
+- "feat: Add enabled-by-default Kill Switch for localization. (Axel Langenskiold)"
+- "i18n(weekly-mr): Upgrade translations from crowdin (8afcb566). (L10n bot)"
+- "feat: add startup compatibility check (Elena Švilpė)"
+---
+version: 4.17.2
+time: 2026/08/04 14:42
+author: Axel Langenskiold
+email: axel.langenskiold@proton.ch
+description:
+- "fix: Translate missing strings. (Axel Langenskiold)"
+- "feat: Translate error messages. (Axel Langenskiold)"
+- "feat: Add location names refresher. (Axel Langenskiold)"
+- "i18n(weekly-mr): Upgrade translations from crowdin (1c653cea). (L10n bot)"
+- "feat: Translate location in server list. (Axel Langenskiold)"
+---
+version: 4.17.1
+time: 2026/07/20 13:05
+author: L10n bot
+email: service_account_73c4205ebb9a547d11aa5c7b26226660@noreply.gitlab.protontech.ch
+description:
+- "i18n(weekly-mr): Upgrade translations from crowdin (36fe03be). (L10n bot)"
+- "feat: Translate countries in server list. (Axel Langenskiold)"
+- "feat: Add script to sweep and screenshot all demos against supported-theme combinations (Richard Paterson)"
+- "fix: proton-vpn-api-core needs to be at version 5.5.5 (Luke Titley)"
+- "feat: Translate menu and menu widgets. (Axel Langenskiold)"
+- "feat: Translate account and feature section in settings. (Axel Langenskiold)"
+- "feat: Translate connection and general section in settings. (Axel Langenskiold)"
+- "feat: add l10n to main VPN view. (Axel Langenskiold)"
+- "fix: Ctrl+F to set focus in Search Field not working. (Axel Langenskiold)"
+- "feat: make .po compilation job fail if no .po-files exist. (Axel Langenskiold)"
+- "feat: Use ProTunV1 feature flag (Luke Titley)"
+- "chore: Make L10N jobs opt-in (Axel Langenskiold)"
+- "i18n(weekly-mr): Upgrade translations from crowdin (2ce70093). (L10n bot)"
+- "i18n(weekly-mr): Upgrade translations from crowdin (35aec34b). (Aurelien Garroux)"
+- "feat: Add .pot-gen and check-missing-translations scripts to devtools submodule (Axel Langenskiold)"
+- "feat: Add GeneratorBot for translations (Axel Langenskiold)"
+- "feat: localize log in view (Axel Langenskiold)"
+- "feat: introduce translation engine (Axel Langenskiold)"
+- "feat: Add widget demo framework (Richard Paterson)"
+- "feat: Allow split tunneling for protun (Luke Titley)"
+---
 version: 4.16.5
 time: 2026/05/25 07:50
 author: Elena Švilpė

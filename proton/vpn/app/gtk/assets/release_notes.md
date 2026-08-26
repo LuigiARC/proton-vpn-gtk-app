@@ -1,4 +1,15 @@
-## What's new (4.16.5)
+## What's new (4.18.0)
+- Improved accessibility. The app now automatically uses a supported language that is configured in your OS.
+- Introduced a notification if dependencies are missing when the app starts.
+
+## 4.17.2
+- Minor UI improvements and bug fixes.
+
+## 4.17.1
+- Introduced Proton Protocols, a new VPN architecture designed for improved stability and censorship resistance
+- Introduced Proton Stealth, the Proton Protocols implementation of our unique Stealth anti-censorship technology
+
+## 4.16.5
 - Minor stability improvements and development dependency cleanup.
 
 ## 4.16.4

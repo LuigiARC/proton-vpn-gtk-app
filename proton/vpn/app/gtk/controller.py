@@ -49,6 +49,7 @@ from proton.vpn.app.gtk.services.reconnector.network_monitor import NetworkMonit
 from proton.vpn.app.gtk.services.reconnector.session_monitor import SessionMonitor
 from proton.vpn.app.gtk.services.reconnector.vpn_monitor import VPNMonitor
 from proton.vpn.app.gtk.settings_watchers import SettingsWatchers
+from proton.vpn.app.gtk.translator import active_language, LOCALIZATION_ENABLED
 from proton.vpn.app.gtk.utils import glib
 from proton.vpn.app.gtk.utils.exception_handler import ExceptionHandler
 from proton.vpn.app.gtk.utils.executor import AsyncExecutor
@@ -91,7 +92,10 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
 
         client_type_metadata = ClientTypeMetadata(type="gui")
 
-        self._api = api or ProtonVPNAPI(client_type_metadata)
+        self._api = api or ProtonVPNAPI(
+            client_type_metadata,
+            locale=active_language() if LOCALIZATION_ENABLED else None
+        )
         self._connector = vpn_connector
         self.reconnector = vpn_reconnector
 
@@ -162,6 +166,12 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         :return: A future to be able to track the logout completion.
         """
         return self.executor.submit(self._api.logout)
+
+    def passes_startup_checks(self) -> bool:
+        """
+        Returns True if there are any compatible VPN backends and False otherwise.
+        """
+        return self._api.validate_connection_availability()
 
     @property
     def user_logged_in(self) -> bool:
@@ -645,6 +655,20 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
     def unset_server_loads_updated_callback(self):
         """Unsets the callback that is called when the server loads are updated."""
         future = self.executor.submit(self._api.refresher.set_server_loads_updated_callback, None)
+        future.add_done_callback(lambda f: GLib.idle_add(f.result))
+
+    def set_location_names_updated_callback(self, callback: Callable[[], None]):
+        """Sets the callback that is called when the location names are updated."""
+        future = self.executor.submit(
+            self._api.refresher.set_location_names_updated_callback,
+            lambda: GLib.idle_add(callback)
+        )
+        future.add_done_callback(lambda f: GLib.idle_add(f.result))
+
+    def unset_location_names_updated_callback(self):
+        """Unsets the callback that is called when the location names are updated."""
+        future = self.executor.submit(
+            self._api.refresher.set_location_names_updated_callback, None)
         future.add_done_callback(lambda f: GLib.idle_add(f.result))
 
     @property
